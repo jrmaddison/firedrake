@@ -144,6 +144,28 @@ class AssembleBlock(Block, Backend):
                 dform = dform.function
         return dform
 
+    def solve_tlm(self):
+        x, = self.get_outputs()
+
+        F = self.form
+
+        tau_rhs = ufl.classes.Zero()
+        for block_variable in self.get_dependencies():
+            dep = block_variable.output
+            if block_variable.tlm_value is not None:
+                if isinstance(dep, self.compat.MeshType):
+                    dep = self.backend.SpatialCoordinate(dep)
+                tau_rhs = tau_rhs + self.backend.derivative(
+                    F, dep, block_variable.tlm_value)
+
+        x.tlm_value = None
+        if isinstance(tau_rhs, ufl.classes.Zero):
+            return
+        tau_rhs = ufl.algorithms.expand_derivatives(tau_rhs)
+        if tau_rhs.empty():
+            return
+        x.tlm_value = self.backend.assemble(tau_rhs)
+
     def prepare_evaluate_hessian(self, inputs, hessian_inputs, adj_inputs,
                                  relevant_dependencies):
         return self.prepare_evaluate_adj(inputs, adj_inputs,

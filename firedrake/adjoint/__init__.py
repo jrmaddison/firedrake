@@ -20,6 +20,7 @@ else:
 from pyadjoint.tape import Tape, set_working_tape, get_working_tape, \
                             pause_annotation, continue_annotation, \
                             stop_annotating, annotate_tape  # noqa F401
+from pyadjoint.block import reverse_over_forward  # noqa: F401
 from pyadjoint.reduced_functional import ReducedFunctional  # noqa F401
 from firedrake.adjoint_utils.checkpointing import \
     enable_disk_checkpointing, pause_disk_checkpointing, \

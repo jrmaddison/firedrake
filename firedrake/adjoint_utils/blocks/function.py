@@ -137,6 +137,29 @@ class FunctionAssignBlock(Block, Backend):
 
         return dudm
 
+    def solve_tlm(self):
+        x, = self.get_outputs()
+        if self.expr is None:
+            y, = self.get_dependencies()
+            x.tlm_value = self.backend.Function(x.output.function_space())
+            if y.tlm_value is not None:
+                x.tlm_value.assign(y.tlm_value)
+        else:
+            tlm_rhs = ufl.classes.Zero(x.output.ufl_shape)
+            for block_variable in self.get_dependencies():
+                if block_variable.tlm_value is not None:
+                    tlm_rhs = tlm_rhs + ufl.derivative(
+                        self.expr, block_variable.output, block_variable.tlm_value)
+
+            x.tlm_value = None
+            if isinstance(tlm_rhs, ufl.classes.Zero):
+                return
+            tlm_rhs = ufl.algorithms.expand_derivatives(tlm_rhs)
+            if isinstance(tlm_rhs, ufl.classes.Zero):
+                return
+            x.tlm_value = self.backend.Function(x.output.function_space())
+            x.tlm_value.assign(tlm_rhs)
+
     def prepare_evaluate_hessian(self, inputs, hessian_inputs, adj_inputs,
                                  relevant_dependencies):
         return self.prepare_evaluate_adj(inputs, hessian_inputs,
@@ -374,6 +397,28 @@ class InterpolateBlock(Block, Backend):
                 continue
             dJdm += self.backend.derivative(prepared, input, tlm_inputs[i])
         return self.backend.Interpolator(dJdm, self.V).interpolate()
+
+    def solve_tlm(self):
+        x, = self.get_outputs()
+
+        F = self.expr
+
+        tau_rhs = ufl.classes.Zero()
+        for block_variable in self.get_dependencies():
+            dep = block_variable.output
+            if block_variable.tlm_value is not None:
+                if isinstance(dep, self.compat.MeshType):
+                    dep = self.backend.SpatialCoordinate(dep)
+                tau_rhs = tau_rhs + self.backend.derivative(
+                    F, dep, block_variable.tlm_value)
+
+        x.tlm_value = None
+        if isinstance(tau_rhs, ufl.classes.Zero):
+            return
+        tau_rhs = ufl.algorithms.expand_derivatives(tau_rhs)
+        if isinstance(tau_rhs, ufl.classes.Zero):
+            return
+        x.tlm_value = self.backend.Interpolator(tau_rhs, self.V).interpolate()
 
     def prepare_evaluate_hessian(self, inputs, hessian_inputs, adj_inputs,
                                  relevant_dependencies):

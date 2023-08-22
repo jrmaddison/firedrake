@@ -315,6 +315,43 @@ class GenericSolveBlock(Block, Backend):
             dFdm, dudm, bcs
         )
 
+    def solve_tlm(self):
+        x, = self.get_outputs()
+
+        if self.linear:
+            F = self.backend.action(self.lhs, x.output) - self.rhs
+        else:
+            F = self.lhs
+
+        tau_rhs = ufl.classes.Zero(x.output.ufl_shape)
+        tau_bcs = []
+        for block_variable in self.get_dependencies():
+            if block_variable is not x:
+                dep = block_variable.output
+                if isinstance(dep, self.backend.DirichletBC):
+                    if block_variable.tlm_value is None:
+                        tau_bcs.append(self.compat.create_bc(dep, homogenize=True))
+                    else:
+                        tau_bcs.append(block_variable.tlm_value)
+                elif block_variable.tlm_value is not None:
+                    if isinstance(dep, self.compat.MeshType):
+                        dep = self.backend.SpatialCoordinate(dep)
+                    tau_rhs = tau_rhs - self.backend.derivative(
+                        F, dep, block_variable.tlm_value)
+
+        x.tlm_value = self.backend.Function(x.output.function_space())
+        for tau_bc in tau_bcs:
+            tau_bc.apply(x.tlm_value)
+        if isinstance(tau_rhs, ufl.classes.Zero):
+            return
+        tau_rhs = ufl.algorithms.expand_derivatives(tau_rhs)
+        if tau_rhs.empty():
+            return
+        tau_lhs = self.backend.derivative(F, x.output, x.tlm_value)
+        tau_lhs = ufl.algorithms.expand_derivatives(tau_lhs)
+        self.backend.solve(tau_lhs - tau_rhs == 0, x.tlm_value, bcs=tau_bcs,
+                           *self.forward_args, **self.forward_kwargs)
+
     def _assemble_and_solve_tlm_eq(self, dFdu, dFdm, dudm, bcs):
         return self._assembled_solve(dFdu, dFdm, dudm, bcs)
 
