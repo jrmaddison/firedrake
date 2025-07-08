@@ -260,9 +260,18 @@ class TransformBlock(Block):
         self._args = args
         self._kwargs = kwargs
 
+    def evaluate_tlm_component(self, inputs, tlm_inputs, block_variable, idx, prepared=None):
+        tau, = tlm_inputs
+        return transform(tau, *self._args, **self._kwargs)
+
     def evaluate_adj_component(self, inputs, adj_inputs, block_variable, idx, prepared=None):
         lam, = adj_inputs
         return transform(lam, *self._args, **self._kwargs)
+
+    def evaluate_hessian_component(self, inputs, hessian_inputs, adj_inputs, block_variable, idx,
+                                   relevant_dependencies, prepared=None):
+        sigma, = hessian_inputs
+        return transform(sigma, *self._args, **self._kwargs)
 
     def recompute_component(self, inputs, block_variable, idx, prepared):
         v, = inputs
@@ -271,7 +280,8 @@ class TransformBlock(Block):
 
 @pytest.mark.skipslepc
 @pytest.mark.parametrize("tao_type", ["lmvm",
-                                      "blmvm"])
+                                      "blmvm",
+                                      "nls"])
 @pytest.mark.skipcomplex
 def test_simple_inversion_riesz_representation(tao_type):
     """Test use of a Riesz map in inversion of source term in helmholze eqn
