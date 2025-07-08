@@ -304,6 +304,31 @@ def test_simple_inversion_riesz_representation(tao_type):
         source_ref.interpolate(cos(pi*x**2))
         u_ref = _simple_helmholz_model(V, source_ref)
 
+    soln_1 = None
+    error_norm_1 = 0
+
+    def ref_monitor(tao):
+        nonlocal soln_1
+
+        if tao.getIterationNumber() == 1:
+            soln_1 = tao.getSolution().copy()
+
+    def test_monitor(tao):
+        nonlocal error_norm_1
+
+        if tao.getIterationNumber() == 1:
+            soln = Function(V)
+            with soln.dat.vec_wo as soln_v:
+                tao.getSolution().copy(result=soln_v)
+            soln = transform(soln, TransformType.PRIMAL,
+                             riesz_representation,
+                             mfn_parameters=mfn_parameters)
+
+            error = soln_1.copy()
+            with soln.dat.vec_ro as soln_v:
+                error.axpy(-1, soln_v)
+            error_norm_1 = error.norm(norm_type=PETSc.NormType.NORM_INFINITY)
+
     def forward(source):
         c = Control(source)
         u = _simple_helmholz_model(V, source)
@@ -319,6 +344,7 @@ def test_simple_inversion_riesz_representation(tao_type):
         solver = TAOSolver(
             MinimizationProblem(rf), tao_parameters,
             convert_options={"riesz_representation": riesz_representation})
+        solver.tao.setMonitor(ref_monitor)
         x = solver.solve()
         assert_allclose(x.dat.data, source_ref.dat.data, rtol=1e-2)
 
@@ -343,12 +369,15 @@ def test_simple_inversion_riesz_representation(tao_type):
         solver_transform = TAOSolver(
             MinimizationProblem(rf_transform), tao_parameters,
             convert_options={"riesz_representation": "l2"})
+        solver_transform.tao.setMonitor(test_monitor)
         x_transform = transform(solver_transform.solve(), TransformType.PRIMAL,
                                 riesz_representation,
                                 mfn_parameters=mfn_parameters)
         assert_allclose(x_transform.dat.data, source_ref.dat.data, rtol=1e-2)
 
         assert solver.tao.getIterationNumber() <= solver_transform.tao.getIterationNumber()
+    print(f"{error_norm_1=}")
+    assert error_norm_1 < 1e-14
 
 
 @pytest.mark.skipcomplex
